@@ -7,7 +7,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../CMake/opencv.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../CMake/ncnn.cmake)
 
 
-add_executable(${PROJECT_NAME} main.cpp perfect_pixel.cpp)
+add_executable(${PROJECT_NAME} main.cpp perfect_pixel.cpp mosaic_detect.cpp)
 
 target_link_libraries(${PROJECT_NAME}  webp ${NCNN_LIB} ${OpenCV_LIBS})
 
