@@ -118,6 +118,7 @@ for %%i in ("%INPUT_DIR%\*") do (
 
     set "model_name="
     set "scale_suffix="
+    set "denoise_suffix="
     set "prev_token="
     
     for %%A in (%rt_params%) do (
@@ -130,7 +131,7 @@ for %%i in ("%INPUT_DIR%\*") do (
              REM Remember -s for scale value
              set "prev_token=s"
         ) else if /i "!token!"=="-n" (
-             REM Remember -n for denoise value (optional)
+             REM Remember -n for denoise value
              set "prev_token=n"
         ) else (
              REM Handle Values - merge with previous parameter
@@ -145,7 +146,8 @@ for %%i in ("%INPUT_DIR%\*") do (
                  REM -s parameter uses x prefix
                  set "scale_suffix=_x!fname!"
              ) else if "!prev_token!"=="n" (
-                 REM -n parameter - skip in filename for cleaner output
+                 REM -n parameter uses n prefix
+                 set "denoise_suffix=_n!fname!"
              ) else if "!prev_token!"=="m" (
                  REM -m parameter value (model name) - use as base name
                  set "model_name=!fname!"
@@ -154,7 +156,7 @@ for %%i in ("%INPUT_DIR%\*") do (
         )
     )
 
-    set "output_name=!model_name!!scale_suffix!_!input_name!!input_ext!"
+    set "output_name=!model_name!!scale_suffix!!denoise_suffix!_!input_name!!input_ext!"
     set "output_file=%OUTPUT_DIR%\!output_name!"
 
     if exist "!output_file!" (

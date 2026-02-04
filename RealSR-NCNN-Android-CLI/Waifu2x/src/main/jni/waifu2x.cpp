@@ -251,6 +251,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
         for (int xi = 0; xi < xtiles; xi++)
         {
             const int tile_w_nopad = std::min((xi + 1) * TILE_SIZE_X, w) - xi * TILE_SIZE_X;
+            const int tile_h_nopad = std::min((yi + 1) * TILE_SIZE_Y, h) - yi * TILE_SIZE_Y;
 
             if (tta_mode)
             {
@@ -258,24 +259,24 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
                 ncnn::VkMat in_tile_gpu[8];
                 ncnn::VkMat in_alpha_tile_gpu;
                 {
-                    // crop tile
+                    // crop tile - always use fixed size tile with full prepadding
                     int tile_x0 = xi * TILE_SIZE_X - prepadding;
-                    int tile_x1 = std::min((xi + 1) * TILE_SIZE_X, w) + prepadding;
+                    int tile_x1 = (xi + 1) * TILE_SIZE_X + prepadding;
                     int tile_y0 = yi * TILE_SIZE_Y - prepadding;
-                    int tile_y1 = std::min((yi + 1) * TILE_SIZE_Y, h) + prepadding;
+                    int tile_y1 = (yi + 1) * TILE_SIZE_Y + prepadding;
 
-                    in_tile_gpu[0].create(tile_x1 - tile_x0, tile_y1 - tile_y0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
-                    in_tile_gpu[1].create(tile_x1 - tile_x0, tile_y1 - tile_y0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
-                    in_tile_gpu[2].create(tile_x1 - tile_x0, tile_y1 - tile_y0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
-                    in_tile_gpu[3].create(tile_x1 - tile_x0, tile_y1 - tile_y0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
-                    in_tile_gpu[4].create(tile_y1 - tile_y0, tile_x1 - tile_x0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
-                    in_tile_gpu[5].create(tile_y1 - tile_y0, tile_x1 - tile_x0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
-                    in_tile_gpu[6].create(tile_y1 - tile_y0, tile_x1 - tile_x0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
-                    in_tile_gpu[7].create(tile_y1 - tile_y0, tile_x1 - tile_x0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[0].create(TILE_SIZE_X + prepadding * 2, TILE_SIZE_Y + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[1].create(TILE_SIZE_X + prepadding * 2, TILE_SIZE_Y + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[2].create(TILE_SIZE_X + prepadding * 2, TILE_SIZE_Y + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[3].create(TILE_SIZE_X + prepadding * 2, TILE_SIZE_Y + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[4].create(TILE_SIZE_Y + prepadding * 2, TILE_SIZE_X + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[5].create(TILE_SIZE_Y + prepadding * 2, TILE_SIZE_X + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[6].create(TILE_SIZE_Y + prepadding * 2, TILE_SIZE_X + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu[7].create(TILE_SIZE_Y + prepadding * 2, TILE_SIZE_X + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
+                        in_alpha_tile_gpu.create(TILE_SIZE_X, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(10);
@@ -302,7 +303,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
                     constants[8].i = xi * TILE_SIZE_X;
                     constants[9].i = std::min(yi * TILE_SIZE_Y, prepadding);
                     constants[10].i = channels;
-                    constants[11].i = in_alpha_tile_gpu.w;
+                    constants[11].i = tile_w_nopad;
                     constants[12].i = in_alpha_tile_gpu.h;
 
                     ncnn::VkMat dispatcher;
@@ -370,7 +371,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
                     ncnn::VkMat dispatcher;
                     dispatcher.w = std::min(TILE_SIZE_X * scale, out_gpu.w - xi * TILE_SIZE_X * scale);
-                    dispatcher.h = out_gpu.h;
+                    dispatcher.h = std::min(TILE_SIZE_Y * scale, out_gpu.h - yi * TILE_SIZE_Y * scale);
                     dispatcher.c = channels;
 
                     cmd.record_pipeline(waifu2x_postproc, bindings, constants, dispatcher);
@@ -382,17 +383,17 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
                 ncnn::VkMat in_tile_gpu;
                 ncnn::VkMat in_alpha_tile_gpu;
                 {
-                    // crop tile
+                    // crop tile - always use fixed size tile with full prepadding
                     int tile_x0 = xi * TILE_SIZE_X - prepadding;
-                    int tile_x1 = std::min((xi + 1) * TILE_SIZE_X, w) + prepadding;
+                    int tile_x1 = (xi + 1) * TILE_SIZE_X + prepadding;
                     int tile_y0 = yi * TILE_SIZE_Y - prepadding;
-                    int tile_y1 = std::min((yi + 1) * TILE_SIZE_Y, h) + prepadding;
+                    int tile_y1 = (yi + 1) * TILE_SIZE_Y + prepadding;
 
-                    in_tile_gpu.create(tile_x1 - tile_x0, tile_y1 - tile_y0, 3, in_out_tile_elemsize, 1, blob_vkallocator);
+                    in_tile_gpu.create(TILE_SIZE_X + prepadding * 2, TILE_SIZE_Y + prepadding * 2, 3, in_out_tile_elemsize, 1, blob_vkallocator);
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
+                        in_alpha_tile_gpu.create(TILE_SIZE_X, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(3);
@@ -412,7 +413,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
                     constants[8].i = xi * TILE_SIZE_X;
                     constants[9].i = std::min(yi * TILE_SIZE_Y, prepadding);
                     constants[10].i = channels;
-                    constants[11].i = in_alpha_tile_gpu.w;
+                    constants[11].i = tile_w_nopad;
                     constants[12].i = in_alpha_tile_gpu.h;
 
                     ncnn::VkMat dispatcher;
@@ -472,7 +473,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
                     ncnn::VkMat dispatcher;
                     dispatcher.w = std::min(TILE_SIZE_X * scale, out_gpu.w - xi * TILE_SIZE_X * scale);
-                    dispatcher.h = out_gpu.h;
+                    dispatcher.h = std::min(TILE_SIZE_Y * scale, out_gpu.h - yi * TILE_SIZE_Y * scale);
                     dispatcher.c = channels;
 
                     cmd.record_pipeline(waifu2x_postproc, bindings, constants, dispatcher);
@@ -602,6 +603,12 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
             ncnn::Mat out;
 
+            // border padding for cpu
+            int pad_top = std::max(prepadding - yi * TILE_SIZE_Y, 0);
+            int pad_bottom = std::max(std::min((yi + 1) * TILE_SIZE_Y + prepadding - h, prepadding), 0);
+            int pad_left = std::max(prepadding - xi * TILE_SIZE_X, 0);
+            int pad_right = std::max(std::min((xi + 1) * TILE_SIZE_X + prepadding - w, prepadding), 0);
+
             if (tta_mode)
             {
                 // split alpha and preproc
@@ -637,11 +644,6 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
                 // border padding
                 {
-                    int pad_top = std::max(prepadding - yi * TILE_SIZE_Y, 0);
-                    int pad_bottom = std::max(std::min((yi + 1) * TILE_SIZE_Y + prepadding - h, prepadding), 0);
-                    int pad_left = std::max(prepadding - xi * TILE_SIZE_X, 0);
-                    int pad_right = std::max(std::min((xi + 1) * TILE_SIZE_X + prepadding - w, prepadding), 0);
-
                     ncnn::Mat in_tile_padded;
                     ncnn::copy_make_border(in_tile[0], in_tile_padded, pad_top, pad_bottom, pad_left, pad_right, ncnn::BORDER_REPLICATE, 0.f, net.opt);
                     in_tile[0] = in_tile_padded;
@@ -737,17 +739,17 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
                         for (int i = 0; i < out.h; i++)
                         {
-                            const float* ptr0 = out_tile_0.row(i);
-                            const float* ptr1 = out_tile_1.row(out_tile[0].h - 1 - i);
-                            const float* ptr2 = out_tile_2.row(i) + out_tile[0].w - 1;
-                            const float* ptr3 = out_tile_3.row(out_tile[0].h - 1 - i) + out_tile[0].w - 1;
+                            const float* ptr0 = out_tile_0.row(i + pad_top * scale) + pad_left * scale;
+                            const float* ptr1 = out_tile_1.row(out_tile[0].h - 1 - i - pad_top * scale) + pad_left * scale;
+                            const float* ptr2 = out_tile_2.row(i + pad_top * scale) + out_tile[0].w - 1 - pad_left * scale;
+                            const float* ptr3 = out_tile_3.row(out_tile[0].h - 1 - i - pad_top * scale) + out_tile[0].w - 1 - pad_left * scale;
 
                             for (int j = 0; j < out.w; j++)
                             {
-                                const float* ptr4 = out_tile_4.row(j) + i;
-                                const float* ptr5 = out_tile_5.row(out_tile[0].w - 1 - j) + i;
-                                const float* ptr6 = out_tile_6.row(j) + out_tile[0].h - 1 - i;
-                                const float* ptr7 = out_tile_7.row(out_tile[0].w - 1 - j) + out_tile[0].h - 1 - i;
+                                const float* ptr4 = out_tile_4.row(j + pad_left * scale) + i + pad_top * scale;
+                                const float* ptr5 = out_tile_5.row(out_tile[0].w - 1 - j - pad_left * scale) + i + pad_top * scale;
+                                const float* ptr6 = out_tile_6.row(j + pad_left * scale) + out_tile[0].h - 1 - i - pad_top * scale;
+                                const float* ptr7 = out_tile_7.row(out_tile[0].w - 1 - j - pad_left * scale) + out_tile[0].h - 1 - i - pad_top * scale;
 
                                 float v = (*ptr0++ + *ptr1++ + *ptr2-- + *ptr3-- + *ptr4 + *ptr5 + *ptr6 + *ptr7) / 8;
 
@@ -806,11 +808,6 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
                 // border padding
                 {
-                    int pad_top = std::max(prepadding - yi * TILE_SIZE_Y, 0);
-                    int pad_bottom = std::max(std::min((yi + 1) * TILE_SIZE_Y + prepadding - h, prepadding), 0);
-                    int pad_left = std::max(prepadding - xi * TILE_SIZE_X, 0);
-                    int pad_right = std::max(std::min((xi + 1) * TILE_SIZE_X + prepadding - w, prepadding), 0);
-
                     ncnn::Mat in_tile_padded;
                     ncnn::copy_make_border(in_tile, in_tile_padded, pad_top, pad_bottom, pad_left, pad_right, ncnn::BORDER_REPLICATE, 0.f, net.opt);
                     in_tile = in_tile_padded;
@@ -848,7 +845,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
                         for (int i = 0; i < out.h; i++)
                         {
-                            const float* ptr = out_tile.channel(q).row(i);
+                            const float* ptr = out_tile.channel(q).row(i + pad_top * scale) + pad_left * scale;
 
                             for (int j = 0; j < out.w; j++)
                             {
