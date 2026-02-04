@@ -9,8 +9,17 @@
 #include <fstream>
 #include <cmath>
 
-#if _WIN32
 #include <opencv2/opencv.hpp>
+
+#if _WIN32
+typedef std::wstring path_t;
+#define PATHSTR(s) L##s
+#else
+typedef std::string path_t;
+#define PATHSTR(s) s
+#endif
+
+#if _WIN32
 
 // 在 Windows 下，imread 不能直接读取包含中文的宽字符路径，需用 _wfopen 读取文件为字节流，再用 imdecode 解码
 static cv::Mat imread_unicode(const std::wstring& wpath, int flags = cv::IMREAD_UNCHANGED) {
@@ -20,7 +29,7 @@ static cv::Mat imread_unicode(const std::wstring& wpath, int flags = cv::IMREAD_
     fseek(fp, 0, SEEK_END);
     long filesize = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    std::vector<uchar> buf(filesize);
+    std::vector<unsigned char> buf(filesize);
     fread(buf.data(), 1, filesize, fp);
     fclose(fp);
     // 解码为Mat
@@ -40,7 +49,7 @@ static bool imwrite_unicode(const std::wstring& wpath, const cv::Mat& image, con
         ext = extbuf;
     }
     // 编码图片为字节流
-    std::vector<uchar> buf;
+    std::vector<unsigned char> buf;
     if (!cv::imencode(ext, image, buf, params)) return false;
     // 用 _wfopen 写入
     FILE* fp = _wfopen(wpath.c_str(), L"wb");
@@ -51,6 +60,67 @@ static bool imwrite_unicode(const std::wstring& wpath, const cv::Mat& image, con
 }
 
 #endif
+
+static void imread(const path_t &imagepath, cv::Mat &inBGR, cv::Mat& inAlpha) {
+        // 读取图像
+        cv::Mat image;
+        inAlpha = cv::Mat();
+        #if _WIN32
+            image = imread_unicode(imagepath, cv::IMREAD_UNCHANGED);
+        #else
+           image = cv::imread(imagepath, cv::IMREAD_UNCHANGED);
+        #endif
+        if (image.empty()) {
+#if _WIN32
+            fwprintf(stderr, L"decode image %ls failed\n", imagepath.c_str());
+#else // _WIN32
+
+            fprintf(stderr, "decode image %s failed\n", imagepath.c_str());
+#endif // _WIN32
+            inBGR = cv::Mat();
+            return;
+        }
+        
+        cv::Mat inimage;
+        int c = image.channels();
+
+        if (c == 1) {
+            // 如果图像有1个通道，转换为3个通道
+            cv::cvtColor(image, inBGR, cv::COLOR_GRAY2BGR);
+            
+            // return ;
+        } else if (image.channels() == 4) {
+            // 如果图像有4个通道，分离通道
+            std::vector<cv::Mat> channels;
+            cv::split(image, channels);
+            cv::Mat alphaChannel = channels[3];
+
+            // 判断 alpha 通道是否为单一颜色
+            if (cv::countNonZero(alphaChannel != alphaChannel.at<unsigned char>(0, 0)) == 0) {
+                #if _WIN32  
+                           fwprintf(stderr, L"ignore alpha channel, %ls\n", imagepath.c_str());  
+                #else  
+                           fprintf(stderr, "ignore alpha channel, %s\n", imagepath.c_str());  
+                #endif
+            } else {
+                inAlpha = alphaChannel;
+            }
+            cv::merge(channels.data(), 3, inBGR);
+            // return;
+        } else if (c == 3) {
+            inBGR = image;
+        } else {
+#if _WIN32  
+            fwprintf(stderr, L"[err] channel=%d, %ls\n", image.channels(), imagepath.c_str());
+#else  
+            fprintf(stderr, "[err] channel=%d, %s\n", image.channels(), imagepath.c_str());
+#endif
+
+            inBGR = cv::Mat();
+        }
+}
+
+
 
 inline std::string format_time_ms(double ms)
 {

@@ -1,261 +1,299 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: Set base paths
 set "SCRIPT_DIR=%~dp0"
-set "ROOT_DIR=%SCRIPT_DIR%.."
+if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+
+set "ROOT_DIR=%SCRIPT_DIR%\.."
+if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
+
 set "WIN_X64_DIR=%ROOT_DIR%\Win-x64"
 set "INPUT_DIR=%ROOT_DIR%\input"
 set "OUTPUT_DIR=%ROOT_DIR%\output"
 
-:: Change to Win-x64 directory
-cd /d "%WIN_X64_DIR%" || (
-echo Cannot change to %WIN_X64_DIR%
-echo Please ensure the directory exists
-goto :eof
+set total_param_groups=0
+set total_output_files=0
+set total_passed_tests=0
+set total_failed_tests=0
+
+if not exist "%WIN_X64_DIR%" (
+    echo Error: Win-x64 directory not found at: %WIN_X64_DIR%
+    goto endscript
 )
 
-:: Clean output directory
+if not exist "%INPUT_DIR%" (
+    echo Error: Input directory not found at: %INPUT_DIR%
+    goto endscript
+)
+
 echo Cleaning output directory...
-del /f /q "%OUTPUT_DIR%\*" >nul 2>&1
+if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
+if exist "%OUTPUT_DIR%\*" del /f /q "%OUTPUT_DIR%\*" >nul 2>&1
 
-:: Check if input directory has files
-if not exist "%INPUT_DIR%\*" (
-echo No files in input directory %INPUT_DIR%
-echo Please put test images in the input directory
-goto :eof
+set file_count=0
+for %%f in ("%INPUT_DIR%\*") do set /a file_count+=1
+if !file_count! equ 0 (
+    echo No files in input directory %INPUT_DIR%
+    goto endscript
 )
 
-:: Show help information
-if "%1" == "help" goto :show_help
-if "%1" == "--help" goto :show_help
-if "%1" == "-h" goto :show_help
+if "%1"=="help" goto showhelp
+if "%1"=="--help" goto showhelp
+if "%1"=="-h" goto showhelp
 
-:: Check if program is specified
-if "%1" neq "" (
-    set "TARGET_PROGRAM=%1"
-    goto :test_single_program
-) else (
-    goto :test_all_programs
-)
+if "%1"=="" goto test_all
 
-:test_all_programs
+set "target_program=%~1"
+if /i "%target_program%"=="resize-ncnn.exe" goto test_resize_only
+if /i "%target_program%"=="realcugan-ncnn.exe" goto test_realcugan_only
+if /i "%target_program%"=="realsr-ncnn.exe" goto test_realsr_only
+if /i "%target_program%"=="srmd-ncnn.exe" goto test_srmd_only
+if /i "%target_program%"=="waifu2x-ncnn.exe" goto test_waifu2x_only
+if /i "%target_program%"=="mnnsr-ncnn.exe" goto test_mnnsr_only
+
+echo Program not found: %target_program%
+echo Please check the program name
+goto endscript
+
+:test_all
 echo Testing all programs...
 echo.
+call :block_resize
+call :block_realcugan
+call :block_realsr
+call :block_srmd
+call :block_waifu2x
+call :block_mnnsr
+goto summary
 
-call :test_resize
-call :test_realcugan
-call :test_realsr
-call :test_srmd
-call :test_waifu2x
-
+:test_resize_only
+echo Testing single program: resize-ncnn.exe
 echo.
-echo All tests completed!
-echo Results saved in %OUTPUT_DIR%
-goto :eof
+call :block_resize
+goto summary
 
-:test_single_program
-echo Testing single program: %TARGET_PROGRAM%
+:test_realcugan_only
+echo Testing single program: realcugan-ncnn.exe
 echo.
+call :block_realcugan
+goto summary
 
-if "%TARGET_PROGRAM%" == "resize-ncnn.exe" (
-    call :test_resize
-) else if "%TARGET_PROGRAM%" == "realcugan-ncnn.exe" (
-    call :test_realcugan
-) else if "%TARGET_PROGRAM%" == "realsr-ncnn.exe" (
-    call :test_realsr
-) else if "%TARGET_PROGRAM%" == "srmd-ncnn.exe" (
-    call :test_srmd
-) else if "%TARGET_PROGRAM%" == "waifu2x-ncnn.exe" (
-    call :test_waifu2x
-) else (
-    echo Program not found: %TARGET_PROGRAM%
-echo Please check the program name
-)
-
+:test_realsr_only
+echo Testing single program: realsr-ncnn.exe
 echo.
-echo Test completed!
-echo Results saved in %OUTPUT_DIR%
-goto :eof
+call :block_realsr
+goto summary
 
-:test_resize
-if not exist "resize-ncnn.exe" (
-    echo Program resize-ncnn.exe does not exist, skipping test
+:test_srmd_only
+echo Testing single program: srmd-ncnn.exe
 echo.
-    goto :eof
-)
+call :block_srmd
+goto summary
 
-echo Testing program: resize-ncnn.exe
-
-:: Test parameter groups
-set "INDEX=1"
-call :run_test "resize-ncnn.exe" "-s 2 -m bicubic" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 0.5 -m avir" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 2 -m bilinear" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 2 -m nearest" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 2 -m avir-lancir" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 2 -m de-nearest" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 2 -m de-nearest2" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 2 -m de-nearest3" %INDEX%
-set /a INDEX+=1
-call :run_test "resize-ncnn.exe" "-s 0 -m perfectpixel" %INDEX%
-
+:test_mnnsr_only
+echo Testing single program: mnnsr-ncnn.exe
 echo.
-goto :eof
+call :block_mnnsr
+goto summary
 
-:test_realcugan
-if not exist "realcugan-ncnn.exe" (
-    echo Program realcugan-ncnn.exe does not exist, skipping test
+:test_waifu2x_only
+echo Testing single program: waifu2x-ncnn.exe
 echo.
-    goto :eof
-)
-
-echo Testing program: realcugan-ncnn.exe
-
-:: Test parameter groups
-set "INDEX=1"
-call :run_test "realcugan-ncnn.exe" "-m models-nose -s 2 -n 0" %INDEX%
-set /a INDEX+=1
-call :run_test "realcugan-ncnn.exe" "-m models-se -s 2 -n -1" %INDEX%
-set /a INDEX+=1
-call :run_test "realcugan-ncnn.exe" "-m models-se -s 2 -n 0" %INDEX%
-set /a INDEX+=1
-call :run_test "realcugan-ncnn.exe" "-m models-pro -s 2 -n -1" %INDEX%
-set /a INDEX+=1
-call :run_test "realcugan-ncnn.exe" "-m models-pro -s 2 -n 0" %INDEX%
-
-echo.
-goto :eof
-
-:test_realsr
-if not exist "realsr-ncnn.exe" (
-    echo Program realsr-ncnn.exe does not exist, skipping test
-echo.
-    goto :eof
-)
-
-echo Testing program: realsr-ncnn.exe
-
-:: Test parameter groups
-set "INDEX=1"
-call :run_test "realsr-ncnn.exe" "-m models-Real-ESRGAN-anime" %INDEX%
-set /a INDEX+=1
-call :run_test "realsr-ncnn.exe" "-m models-Real-ESRGANv3-general -s 4" %INDEX%
-set /a INDEX+=1
-call :run_test "realsr-ncnn.exe" "-m models-Real-ESRGANv3-anime -s 3" %INDEX%
-
-echo.
-goto :eof
-
-:test_srmd
-if not exist "srmd-ncnn.exe" (
-    echo Program srmd-ncnn.exe does not exist, skipping test
-echo.
-    goto :eof
-)
-
-echo Testing program: srmd-ncnn.exe
-
-:: Test parameter groups
-set "INDEX=1"
-call :run_test "srmd-ncnn.exe" "-s 2" %INDEX%
-set /a INDEX+=1
-call :run_test "srmd-ncnn.exe" "-s 3" %INDEX%
-set /a INDEX+=1
-call :run_test "srmd-ncnn.exe" "-s 4" %INDEX%
-
-echo.
-goto :eof
-
-:test_waifu2x
-if not exist "waifu2x-ncnn.exe" (
-    echo Program waifu2x-ncnn.exe does not exist, skipping test
-echo.
-    goto :eof
-)
-
-echo Testing program: waifu2x-ncnn.exe
-
-:: Test parameter groups
-set "INDEX=1"
-call :run_test "waifu2x-ncnn.exe" "-s 2 -n 0" %INDEX%
-set /a INDEX+=1
-call :run_test "waifu2x-ncnn.exe" "-s 2 -n 1" %INDEX%
-set /a INDEX+=1
-call :run_test "waifu2x-ncnn.exe" "-s 2 -n 2" %INDEX%
-set /a INDEX+=1
-call :run_test "waifu2x-ncnn.exe" "-s 4 -n 0" %INDEX%
-set /a INDEX+=1
-call :run_test "waifu2x-ncnn.exe" "-s 4 -n 1" %INDEX%
-set /a INDEX+=1
-call :run_test "waifu2x-ncnn.exe" "-s 4 -n 2" %INDEX%
-
-echo.
-goto :eof
+call :block_waifu2x
+goto summary
 
 :run_test
-set "PROGRAM=%~1"
-set "PARAMS=%~2"
-set "INDEX=%~3"
+set "rt_program=%~1"
+set "rt_params=%~2"
+set "rt_index=%~3"
+set "test_passed=0"
 
-echo Test parameter group %INDEX%: %PARAMS%
+echo Test parameter group %rt_index%: %rt_params%
+set /a total_param_groups+=1
 
 for %%i in ("%INPUT_DIR%\*") do (
-    set "INPUT_FILE=%%i"
-    set "INPUT_NAME=%%~ni"
-    set "INPUT_EXT=%%~xi"
+    set "input_file=%%i"
+    set "input_name=%%~ni"
+    set "input_ext=%%~xi"
+
+    set "model_name="
+    set "scale_suffix="
+    set "prev_token="
     
-    :: Generate output filename with parameters
-    :: Process PARAMS to create a safe filename suffix
-    set "PARAM_SUFFIX=%PARAMS%"
-    set "PARAM_SUFFIX=!PARAM_SUFFIX:-s =s!"
-    set "PARAM_SUFFIX=!PARAM_SUFFIX:-m =m!"
-    set "PARAM_SUFFIX=!PARAM_SUFFIX:-n =n!"
-    set "PARAM_SUFFIX=!PARAM_SUFFIX: =_!"
-    set "PARAM_SUFFIX=!PARAM_SUFFIX:/=-!"
+    for %%A in (%rt_params%) do (
+        set "token=%%~A"
+        
+        if /i "!token!"=="-m" (
+             REM Remember -m for model name
+             set "prev_token=m"
+        ) else if /i "!token!"=="-s" (
+             REM Remember -s for scale value
+             set "prev_token=s"
+        ) else if /i "!token!"=="-n" (
+             REM Remember -n for denoise value (optional)
+             set "prev_token=n"
+        ) else (
+             REM Handle Values - merge with previous parameter
+             set "fname=!token!"
+             REM Replace forward slash with backslash for consistent path handling
+             set "fname=!fname:/=\!"
+             if "!fname:\=!" neq "!fname!" (
+                 REM Contains path separator, extract filename only
+                 for %%F in ("!fname!") do set "fname=%%~nxF" 2>nul
+             )
+             if "!prev_token!"=="s" (
+                 REM -s parameter uses x prefix
+                 set "scale_suffix=_x!fname!"
+             ) else if "!prev_token!"=="n" (
+                 REM -n parameter - skip in filename for cleaner output
+             ) else if "!prev_token!"=="m" (
+                 REM -m parameter value (model name) - use as base name
+                 set "model_name=!fname!"
+             )
+             set "prev_token="
+        )
+    )
+
+    set "output_name=!model_name!!scale_suffix!_!input_name!!input_ext!"
+    set "output_file=%OUTPUT_DIR%\!output_name!"
+
+    if exist "!output_file!" (
+        del /f /q "!output_file!" >nul 2>&1
+    )
+
+    echo Processing file: !input_name!!input_ext!
     
-    :: Generate output filename with index
-    set "OUTPUT_NAME=!PROGRAM:~0,-4!_%INDEX%_!PARAM_SUFFIX!_!INPUT_NAME!!INPUT_EXT!"
-    set "OUTPUT_FILE=%OUTPUT_DIR%\!OUTPUT_NAME!"
-    
-    :: Run test
-    echo Processing file: !INPUT_NAME!!INPUT_EXT!
-    "%PROGRAM%" %PARAMS% -i "!INPUT_FILE!" -o "!OUTPUT_FILE!"
-    
-    if errorlevel 1 (
-        echo Test failed: !PROGRAM! %PARAMS%
+    "%WIN_X64_DIR%\!rt_program!" %rt_params% -i "!input_file!" -o "!output_file!"
+
+    if exist "!output_file!" (
+        for %%f in ("!output_file!") do set "fsize=%%~zf"
+        if !fsize! gtr 0 (
+            set test_passed=1
+            powershell -NoProfile -Command "Write-Host ([char]0x2705 + ' [OK] Test succeeded: ' + '!output_name!') -ForegroundColor Green"
+        ) else (
+            powershell -NoProfile -Command "Write-Host ([char]0x274C + ' [FAIL] Empty output: ' + '!output_name!') -ForegroundColor Red"
+        )
     ) else (
-        echo Test succeeded: !OUTPUT_NAME!
+        powershell -NoProfile -Command "Write-Host ([char]0x274C + ' [FAIL] No output generated: ' + '!output_name!') -ForegroundColor Red"
     )
 )
 
 echo.
-goto :eof
 
-:show_help
-echo Test script usage:
+if !test_passed! equ 1 (
+    set /a total_passed_tests+=1
+) else (
+    set /a total_failed_tests+=1
+)
+exit /b
+
+:block_resize
+set "prog_name=resize-ncnn.exe"
+if not exist "%WIN_X64_DIR%\%prog_name%" (
+    echo Program %prog_name% does not exist, skipping.
+    exit /b
+)
+echo Testing program: %prog_name%
+call :run_test "%prog_name%" "-m bicubic -s 2" 1
+call :run_test "%prog_name%" "-m bilinear -s 2" 2
+call :run_test "%prog_name%" "-m nearest -s 2" 3
+call :run_test "%prog_name%" "-m avir -s 2" 4
+call :run_test "%prog_name%" "-m avir-lancir -s 2" 5
+call :run_test "%prog_name%" "-m avir -s 0.5" 6
+call :run_test "%prog_name%" "-m de-nearest -s 2" 7
+call :run_test "%prog_name%" "-m de-nearest2 -s 2" 8
+call :run_test "%prog_name%" "-m de-nearest3 -s 2" 9
+call :run_test "%prog_name%" "-m perfectpixel -s 0" 10
 echo.
-echo 1. Test all programs:
-echo    test-all.bat
+exit /b
+
+:block_realcugan
+set "prog_name=realcugan-ncnn.exe"
+if not exist "%WIN_X64_DIR%\%prog_name%" (
+    echo Program %prog_name% does not exist, skipping.
+    exit /b
+)
+echo Testing program: %prog_name%
+call :run_test "%prog_name%" "-m models-nose -s 2 -n 0" 1
+call :run_test "%prog_name%" "-m models-se -s 2 -n -1" 2
+call :run_test "%prog_name%" "-m models-se -s 2 -n 0" 3
+call :run_test "%prog_name%" "-m models-pro -s 2 -n -1" 4
+call :run_test "%prog_name%" "-m models-pro -s 2 -n 0" 5
 echo.
-echo 2. Test single program:
-echo    test-all.bat [program_name]
-echo    Example: test-all.bat resize-ncnn.exe
+exit /b
+
+:block_realsr
+set "prog_name=realsr-ncnn.exe"
+if not exist "%WIN_X64_DIR%\%prog_name%" (
+    echo Program %prog_name% does not exist, skipping.
+    exit /b
+)
+echo Testing program: %prog_name%
+call :run_test "%prog_name%" "-m models-Real-ESRGAN-anime" 1
+call :run_test "%prog_name%" "-m models-Real-ESRGANv3-general -s 4" 2
+call :run_test "%prog_name%" "-m models-Real-ESRGANv3-anime -s 3" 3
 echo.
-echo 3. View help:
-echo    test-all.bat help
+exit /b
+
+:block_srmd
+set "prog_name=srmd-ncnn.exe"
+if not exist "%WIN_X64_DIR%\%prog_name%" (
+    echo Program %prog_name% does not exist, skipping.
+    exit /b
+)
+echo Testing program: %prog_name%
+call :run_test "%prog_name%" "-s 2" 1
+call :run_test "%prog_name%" "-s 3" 2
+call :run_test "%prog_name%" "-s 4" 3
 echo.
-echo Notes:
-echo - Input files need to be placed in assets\input directory
-echo - Output results are saved in assets\output directory
-echo - The script will automatically clean the output directory
-echo - You can add new programs and parameter groups in the script
+exit /b
+
+:block_waifu2x
+set "prog_name=waifu2x-ncnn.exe"
+if not exist "%WIN_X64_DIR%\%prog_name%" (
+    echo Program %prog_name% does not exist, skipping.
+    exit /b
+)
+echo Testing program: %prog_name%
+call :run_test "%prog_name%" "-m models-cunet -n 0" 1
+call :run_test "%prog_name%" "-m models-cunet -n 2" 2
+call :run_test "%prog_name%" "-m models-upconv_7_anime_style_art_rgb -n 0" 3
+call :run_test "%prog_name%" "-m models-upconv_7_anime_style_art_rgb -n 2" 4
+call :run_test "%prog_name%" "-m models-upconv_7_photo -n 0" 5
+call :run_test "%prog_name%" "-m models-upconv_7_photo -n 2" 6
 echo.
-goto :eof
+exit /b
+
+:block_mnnsr
+set "prog_name=mnnsr-ncnn.exe"
+if not exist "%WIN_X64_DIR%\%prog_name%" (
+    echo Program %prog_name% does not exist, skipping.
+    exit /b
+)
+echo Testing program: %prog_name%
+call :run_test "%prog_name%" "-m models-MNN/ESRGAN-MoeSR-jp_Illustration-x4.mnn -s 4" 1
+call :run_test "%prog_name%" "-m models-MNN/ESRGAN-Nomos8kSC-x4.mnn -s 4" 2
+echo.
+exit /b
+
+:summary
+set total_output_files=0
+for %%f in ("%OUTPUT_DIR%\*") do set /a total_output_files+=1
+
+echo All tests completed!
+echo Results saved in %OUTPUT_DIR%
+echo.
+echo Test Statistics:
+powershell -NoProfile -Command "Write-Host ('Total parameter groups tested: ' + $env:total_param_groups) -ForegroundColor Cyan"
+powershell -NoProfile -Command "Write-Host ('Total output files generated: ' + $env:total_output_files) -ForegroundColor Yellow"
+powershell -NoProfile -Command "Write-Host ([char]0x2705 + ' Total passed tests: ' + $env:total_passed_tests) -ForegroundColor Green"
+powershell -NoProfile -Command "Write-Host ([char]0x274C + ' Total failed tests: ' + $env:total_failed_tests) -ForegroundColor Red"
+goto endscript
+
+:showhelp
+echo Usage:
+echo test-all.bat [program_name]
+goto endscript
+
+:endscript
+endlocal

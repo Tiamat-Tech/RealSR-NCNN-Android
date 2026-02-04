@@ -316,11 +316,11 @@ void *load(void *args) {
             path_t output_filename2 = ltp->output_files[i] + PATHSTR(".png");
             v.outpath = output_filename2;
 #if _WIN32
-			fwprintf(stderr, L"image %ls has alpha channel ! %ls will output %ls\n"
-				, imagepath.c_str(), imagepath.c_str(), output_filename2.c_str());
+            fwprintf(stderr, L"image %ls has alpha channel ! %ls will output %ls\n"
+                , imagepath.c_str(), imagepath.c_str(), output_filename2.c_str());
 #else // _WIN32
-			fprintf(stderr, "image %s has alpha channel ! %s will output %s\n"
-				, imagepath.c_str(), imagepath.c_str(), output_filename2.c_str());
+            fprintf(stderr, "image %s has alpha channel ! %s will output %s\n"
+                , imagepath.c_str(), imagepath.c_str(), output_filename2.c_str());
 #endif // _WIN32
         }
 
@@ -431,19 +431,19 @@ void *save(void *args) {
             duration<double> time_span = duration_cast<duration<double>>(end - begin);
             if (stp->input_files_size==1)
                 fprintf(stderr, "save result use time: %.3lf\n", time_span.count());
-			else {
+            else {
 
-				duration<double> batch_time_span = duration_cast<duration<double>>(end - batch_start);
+                duration<double> batch_time_span = duration_cast<duration<double>>(end - batch_start);
 #if _WIN32
-				fwprintf(stdout, L"[done] %d/%d %ls -> %ls, %hs/%hs\n", saved_count, stp->input_files_size, v.inpath.c_str(), v.outpath.c_str()
-					, format_time_s(batch_time_span.count()).c_str(), format_time_s(batch_time_span.count() * (stp->input_files_size - saved_count) / saved_count).c_str()
-				);
-#else
-				fprintf(stdout, "[done] %d/%d %s -> %s, %s/%s\n", saved_count, stp->input_files_size, v.inpath.c_str(), v.outpath.c_str()
+                fwprintf(stdout, L"[done] %d/%d %ls -> %ls, %hs/%hs\n", saved_count, stp->input_files_size, v.inpath.c_str(), v.outpath.c_str()
                     , format_time_s(batch_time_span.count()).c_str(), format_time_s(batch_time_span.count() * (stp->input_files_size - saved_count) / saved_count).c_str()
-				);
+                );
+#else
+                fprintf(stdout, "[done] %d/%d %s -> %s, %s/%s\n", saved_count, stp->input_files_size, v.inpath.c_str(), v.outpath.c_str()
+                    , format_time_s(batch_time_span.count()).c_str(), format_time_s(batch_time_span.count() * (stp->input_files_size - saved_count) / saved_count).c_str()
+                );
 #endif
-			}
+            }
 
         } else {
 #if _WIN32
@@ -638,23 +638,23 @@ int main(int argc, char **argv)
     {
         if (path_is_directory(inputpath)) {
 
-			if (fs::exists(outputpath)) {
-				if (!path_is_directory(outputpath)) {
-					fprintf(stderr, "[err]inputpath is directory, outputpath is file\n");
-					return -1;
-				}
-			}
-			else {
+            if (fs::exists(outputpath)) {
+                if (!path_is_directory(outputpath)) {
+                    fprintf(stderr, "[err]inputpath is directory, outputpath is file\n");
+                    return -1;
+                }
+            }
+            else {
                 fs::create_directories(outputpath);
-				if (!fs::exists(outputpath)) {
+                if (!fs::exists(outputpath)) {
                     #if _WIN32  
                     fwprintf(stderr, L"[err]create outputpath failed: %ls\n", outputpath.c_str());  
                     #else  
                     fprintf(stderr, "[err]create outputpath failed: %s\n", outputpath.c_str());  
                     #endif
-					return -1;
-				}
-			}
+                    return -1;
+                }
+            }
 
             std::vector<path_t> filenames;
             int lr = list_directory(inputpath, filenames);
@@ -690,40 +690,40 @@ int main(int argc, char **argv)
                 input_files[i] = inputpath + PATHSTR('/') + filename;
                 output_files[i] = outputpath + PATHSTR('/') + output_filename;
             }
-		}
-		else if (fs::exists(inputpath)) {
+        }
+        else if (fs::exists(inputpath)) {
 
-			format = get_lowcase_extension(outputpath);
-			if (format == PATHSTR("jpeg"))
-				format = PATHSTR("jpg");
-			if (format != PATHSTR("png") && format != PATHSTR("webp") && format != PATHSTR("jpg")) {
-				//fprintf(stderr, "invalid format argument -%s-\n", format);
-				return -1;
-			}
+            format = get_lowcase_extension(outputpath);
+            if (format == PATHSTR("jpeg"))
+                format = PATHSTR("jpg");
+            if (format != PATHSTR("png") && format != PATHSTR("webp") && format != PATHSTR("jpg")) {
+                //fprintf(stderr, "invalid format argument -%s-\n", format);
+                return -1;
+            }
 
-			input_files.push_back(inputpath);
-			output_files.push_back(outputpath);
-		}
-		else {
-			fprintf(stderr, "[err]inputpath not exists\n");
-			return -1;
-		}
+            input_files.push_back(inputpath);
+            output_files.push_back(outputpath);
+        }
+        else {
+            fprintf(stderr, "[err]inputpath not exists\n");
+            return -1;
+        }
     }
 
-	int prepadding = 0;
+    int prepadding = 0;
 
-	//if (model.find(PATHSTR("models-")) != path_t::npos || model.ends_with(".mnn")) {
+    //if (model.find(PATHSTR("models-")) != path_t::npos || model.ends_with(".mnn")) {
 #if _WIN32
-	if (model.find(PATHSTR("models-")) != path_t::npos || model.rfind(L".mnn") == (model.size() - 4)) {
+    if (model.find(PATHSTR("models-")) != path_t::npos || model.rfind(L".mnn") == (model.size() - 4)) {
 #else
-	if (model.find(PATHSTR("models-")) != path_t::npos || model.ends_with(".mnn")) {
+    if (model.find(PATHSTR("models-")) != path_t::npos || model.ends_with(".mnn")) {
 #endif
-		prepadding = 4;
-	}
-	else {
-		fprintf(stderr, "unknown model dir type\n");
-		return -1;
-	}
+        prepadding = 4;
+    }
+    else {
+        fprintf(stderr, "unknown model dir type\n");
+        return -1;
+    }
 
     std::cout << "build time: " << __DATE__ << " " << __TIME__ << std::endl;
 
@@ -811,7 +811,7 @@ int main(int argc, char **argv)
         using string_t = std::string;
         using regex_t = std::regex;
         using smatch_t = std::smatch;
-#define STR(x) x
+//#define STR(x) x
 #endif
         // 获取文件名
         string_t filename = std::filesystem::path(model).filename().native();
