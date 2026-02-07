@@ -62,18 +62,25 @@
         
         .stat-card {
             background: white;
-            padding: 20px;
             border-radius: 8px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         
         .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.stat-card.selected {
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    border: 2px solid #667eea;
+    background-color: rgba(102, 126, 234, 0.1);
+}
         
         .stat-card .number {
             font-size: 36px;
@@ -487,15 +494,75 @@
             document.getElementById('reportInfo').textContent = `生成时间: ${meta.timestamp} | 文件数: ${meta.total_files}`;
             
             // 更新统计卡片
-            const counts = window.reportData.severity_counts;
-            document.getElementById('normalCount').textContent = counts.normal;
-            document.getElementById('mildCount').textContent = counts.mild;
-            document.getElementById('moderateCount').textContent = counts.moderate;
-            document.getElementById('severeCount').textContent = counts.severe;
-            document.getElementById('totalCount').textContent = window.reportData.results.length;
+            updateStatCards(window.reportData.results);
             
             populateFilters(window.reportData.results);
             renderTable(window.reportData.results);
+        }
+        
+        // 更新统计卡片的函数
+        function updateStatCards(results) {
+            // 获取全部数据
+            const allResults = window.reportData ? window.reportData.results : [];
+            
+            // 计算全部数据的分类计数
+            const allCounts = {
+                total: allResults.length,
+                empty: allResults.filter(r => !r.has_output).length,
+                output: allResults.filter(r => r.has_output).length,
+                normal: allResults.filter(r => r.overall.severity === 'normal').length,
+                mild: allResults.filter(r => r.overall.severity === 'mild').length,
+                moderate: allResults.filter(r => r.overall.severity === 'moderate').length,
+                severe: allResults.filter(r => r.overall.severity === 'severe').length
+            };
+            
+            // 获取当前程序和输入的筛选条件
+            const programFilter = document.getElementById('programFilter').value;
+            const inputFilter = document.getElementById('inputFilter').value;
+            
+            // 计算只考虑程序和输入筛选条件的结果
+            const programInputFilteredResults = allResults.filter(r => {
+                if(programFilter !== 'all' && r.program !== programFilter) return false;
+                if(inputFilter !== 'all' && r.input_filename !== inputFilter) return false;
+                return true;
+            });
+            
+            // 计算当前程序和输入筛选条件下的分类计数（分子）
+            const programInputFilteredCounts = {
+                total: programInputFilteredResults.length,
+                empty: programInputFilteredResults.filter(r => !r.has_output).length,
+                output: programInputFilteredResults.filter(r => r.has_output).length,
+                normal: programInputFilteredResults.filter(r => r.overall.severity === 'normal').length,
+                mild: programInputFilteredResults.filter(r => r.overall.severity === 'mild').length,
+                moderate: programInputFilteredResults.filter(r => r.overall.severity === 'moderate').length,
+                severe: programInputFilteredResults.filter(r => r.overall.severity === 'severe').length
+            };
+            
+            // 检查是否处于筛选状态
+            const isFiltered = programFilter !== 'all' || inputFilter !== 'all';
+            
+            // 更新统计卡片
+            document.getElementById('totalCount').innerHTML = isFiltered ? 
+                `${programInputFilteredCounts.total}<span style="font-size: 14px; opacity: 0.7; display: block;">Total: ${allCounts.total}</span>` : 
+                programInputFilteredCounts.total;
+            document.getElementById('emptyCount').innerHTML = isFiltered ? 
+                `${programInputFilteredCounts.empty}<span style="font-size: 14px; opacity: 0.7; display: block;">Total: ${allCounts.empty}</span>` : 
+                programInputFilteredCounts.empty;
+            document.getElementById('outputCount').innerHTML = isFiltered ? 
+                `${programInputFilteredCounts.output}<span style="font-size: 14px; opacity: 0.7; display: block;">Total: ${allCounts.output}</span>` : 
+                programInputFilteredCounts.output;
+            document.getElementById('normalCount').innerHTML = isFiltered ? 
+                `${programInputFilteredCounts.normal}<span style="font-size: 14px; opacity: 0.7; display: block;">Total: ${allCounts.normal}</span>` : 
+                programInputFilteredCounts.normal;
+            document.getElementById('mildCount').innerHTML = isFiltered ? 
+                `${programInputFilteredCounts.mild}<span style="font-size: 14px; opacity: 0.7; display: block;">Total: ${allCounts.mild}</span>` : 
+                programInputFilteredCounts.mild;
+            document.getElementById('moderateCount').innerHTML = isFiltered ? 
+                `${programInputFilteredCounts.moderate}<span style="font-size: 14px; opacity: 0.7; display: block;">Total: ${allCounts.moderate}</span>` : 
+                programInputFilteredCounts.moderate;
+            document.getElementById('severeCount').innerHTML = isFiltered ? 
+                `${programInputFilteredCounts.severe}<span style="font-size: 14px; opacity: 0.7; display: block;">Total: ${allCounts.severe}</span>` : 
+                programInputFilteredCounts.severe;
         }
         
         function populateFilters(results) {
@@ -885,7 +952,46 @@
         // 筛选和排序辅助函数 (保持原逻辑框架)
         function filterBySeverity(sev) {
             currentFilter = sev;
+            
+            // 更新分类按钮的选中状态
+            updateCategoryButtonStates();
+            
             applyFilters();
+        }
+        
+        // 更新分类按钮的选中状态
+        function updateCategoryButtonStates() {
+            // 获取所有统计卡片按钮
+            const statCards = document.querySelectorAll('.stat-card');
+            
+            // 移除所有按钮的选中状态
+            statCards.forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // 根据当前筛选状态添加选中状态
+            if (currentFilter !== 'all') {
+                // 找到对应分类的按钮并添加选中状态
+                let selectedCard = null;
+                
+                if (currentFilter === 'empty') {
+                    selectedCard = document.querySelector('.stat-card:nth-child(2)'); // 未输出
+                } else if (currentFilter === 'output') {
+                    selectedCard = document.querySelector('.stat-card:nth-child(3)'); // 输出
+                } else if (currentFilter === 'normal') {
+                    selectedCard = document.querySelector('.stat-card:nth-child(4)'); // 正常
+                } else if (currentFilter === 'mild') {
+                    selectedCard = document.querySelector('.stat-card:nth-child(5)'); // 轻微异常
+                } else if (currentFilter === 'moderate') {
+                    selectedCard = document.querySelector('.stat-card:nth-child(6)'); // 中度异常
+                } else if (currentFilter === 'severe') {
+                    selectedCard = document.querySelector('.stat-card:nth-child(7)'); // 严重异常
+                }
+                
+                if (selectedCard) {
+                    selectedCard.classList.add('selected');
+                }
+            }
         }
         function applyFilters() {
             if(!window.reportData) return;
@@ -902,12 +1008,20 @@
                 if(iFilter !== 'all' && r.input_filename !== iFilter) return false;
                 return true;
             });
+            
+            // 更新统计卡片，显示筛选后的数据
+            updateStatCards(filtered);
+            
             renderTable(filtered);
         }
         function resetFilters() {
             currentFilter = 'all';
             document.getElementById('programFilter').value = 'all';
             document.getElementById('inputFilter').value = 'all';
+            
+            // 更新分类按钮的选中状态，移除所有选中状态
+            updateCategoryButtonStates();
+            
             applyFilters();
         }
         function sortTable(n) {
