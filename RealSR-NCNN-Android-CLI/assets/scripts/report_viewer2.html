@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>图像一致性评估报告</title>
     
-    <!-- 1. 引入官方 js-image-zoom 库 -->
-    <script src="https://unpkg.com/js-image-zoom@0.7.0/js-image-zoom.js"></script>
+    <!-- 引入 drift 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/drift-zoom@1.5.0/dist/Drift.min.js"></script>
 
     <style>
         * {
@@ -212,8 +212,7 @@
             flex: 1;
             width: 100%;
             display: flex;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
             background: #1a1a1a;
             border-radius: 8px;
             padding: 20px;
@@ -223,13 +222,77 @@
         
         /* 2. 关键修改：图片容器必须自适应内容，以便库正确计算位置 */
         #img-container {
-            display: inline-block; /* 改为 inline-block 让容器包裹图片 */
-            max-width: 100%;
-            max-height: 100%;
-            /* 移除固定的 width/height */
+            display: flex; /* 使用 flex 布局 */
+            align-items: flex-start; /* 垂直顶部对齐，不居中 */
+            justify-content: center; /* 水平居中 */
+            width: 50%; /* 参考 demo 样式，图片区域占 30% */
+            min-height: 100%; /* 最小高度为父容器高度 */
             position: relative; 
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
+        
+        /* 详情面板样式 */
+        #img-details {
+            width: 50%; /* 参考 demo 样式，详情区域占 65% */
+            background: #2a2a2a;
+            padding: 15px;
+            overflow-y: auto;
+            max-height: 100%;
+            position: relative; /* 参考 demo 样式，用于容纳放大镜面板 */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* 调整阴影，使其更现代 */
+        }
+
+        /* 针对 Drift 的放大容器设置样式 */
+        .drift-zoom-pane img{
+            /* 也就是 Nearest Neighbor 插值 */
+            image-rendering: -moz-crisp-edges; /* Firefox */
+            image-rendering: -o-crisp-edges;   /* Opera */
+            image-rendering: -webkit-optimize-contrast; /* Webkit (non-standard naming) */
+            image-rendering: pixelated;        /* Chrome/Edge/Standard */
+            -ms-interpolation-mode: nearest-neighbor; /* IE */
+        }
+        
+        #img-details h3 {
+            color: white;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        #json-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        #json-table th {
+            background-color: #3a3a3a;
+            color: white;
+            text-align: left;
+            padding: 10px 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #555;
+        }
+        
+        #json-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #444;
+            color: #f0f0f0;
+            transition: all 0.2s ease;
+        }
+        
+        #json-table tr:hover {
+            background-color: #333;
+        }
+        
+        #json-table-body {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+
         
         #modalImage {
             max-width: 100%;
@@ -349,9 +412,22 @@
                 </div>
             </div>
             <div class="modal-body" id="modalBody">
-                <!-- 图片容器，js-image-zoom 必须作用于此 -->
+                <!-- 图片容器 -->
                 <div id="img-container">
                     <img id="modalImage" src="" alt="Image">
+                </div>
+                <!-- 详情面板 -->
+                <div id="img-details" class="hidden">
+                    <h3>图片详情</h3>
+                    <table id="json-table">
+                        <thead>
+                            <tr>
+                                <th>属性</th>
+                                <th>值</th>
+                            </tr>
+                        </thead>
+                        <tbody id="json-table-body"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -475,11 +551,11 @@
             const outputFilename = row.cells[1].textContent;
             if (outputFilename && outputFilename !== '-') {
                 // 假设图片在 output 目录下
-                showImage(`../output/${outputFilename}`);
+                showImage(`../output/${outputFilename}`, row);
             }
         }
 
-        function showImage(path) {
+        function showImage(path, tableRow) {
             const modal = document.getElementById('imageModal');
             const img = document.getElementById('modalImage');
             const title = document.getElementById('modalTitle');
@@ -490,66 +566,186 @@
             img.src = path;
             modal.style.display = 'flex'; // 使用 flex 居中
             
-            // 清理旧的放大镜 DOM (js-image-zoom 会在容器内插入 div)
+            // 清理旧的放大镜 DOM
             killZoom();
 
-            // 2. 图片加载完毕后再初始化放大镜
-            img.onload = function() {
-                // 必须重新设置容器尺寸，或者让容器自动适应图片
-                // 因为我们在CSS里把container设为inline-block，它会自动适应img大小
-                if (imageZoomEnabled) {
-                    initZoom();
+            // 2. 初始化放大镜
+            {
+                // 确保 currentBackground 有默认值
+                if (!currentBackground) {
+                    currentBackground = 'gray';
                 }
+                
+                
+                // 确保背景选择器按钮状态正确
+                const bgButtons = document.querySelectorAll('.background-selector button');
+                bgButtons.forEach(button => {
+                    button.classList.remove('active');
+                    if (button.textContent === getBackgroundButtonText(currentBackground)) {
+                        button.classList.add('active');
+                    }
+                });
+                
+                // 辅助函数：根据背景类型获取按钮文本
+                function getBackgroundButtonText(backgroundType) {
+                    const bgMap = {
+                        'gray': '灰色',
+                        'white': '白色',
+                        'black': '黑色',
+                        'checkerboard': '棋盘格'
+                    };
+                    return bgMap[backgroundType] || '灰色';
+                }
+                
+                if (imageZoomEnabled) {
+                    initZoom(tableRow);
+                }
+
+                
+                // 自动调用 changeBackground 函数应用当前选择的背景
+                changeBackground(currentBackground);
             };
         }
 
-        function initZoom() {
+        function initZoom(tableRow) {
             const container = document.getElementById('img-container');
             const img = document.getElementById('modalImage');
+            const modalBody = document.getElementById('modalBody');
+            const imgDetails = document.getElementById('img-details');
+            const tableBody = document.getElementById('json-table-body');
             
             // 确保没有残留的放大镜元素
             killZoom();
             
-            // 3. 配置 js-image-zoom
-            // 只有当图片有实际宽度时才初始化
-            if (img.width > 50) {
+            // 显示详情面板并应用并排显示样式
+            modalBody.classList.add('zoom-enabled');
+            imgDetails.classList.remove('hidden');
+            
+            // 清空表格
+            tableBody.innerHTML = '';
+            
+            // 表格列标题映射
+            const columnTitles = [
+                '序号',
+                '输出文件名',
+                '输入文件名',
+                '程序',
+                '测试参数',
+                '输出尺寸',
+                '输入尺寸',
+                '透明度异常',
+                '透明度比例',
+                'Alpha异常分',
+                'SSIM',
+                'PSNR',
+                '综合得分',
+                '严重程度'
+            ];
+            
+            // 使用表格行数据填充详情面板
+            if (tableRow) {
+                for (let i = 0; i < tableRow.cells.length; i++) {
+                    const cellValue = tableRow.cells[i].textContent;
+                    if (columnTitles[i]) {
+                        const row = document.createElement('tr');
+                        const keyCell = document.createElement('td');
+                        const valueCell = document.createElement('td');
+                        
+                        keyCell.textContent = columnTitles[i];
+                        valueCell.textContent = cellValue || '-';
+                        
+                        row.appendChild(keyCell);
+                        row.appendChild(valueCell);
+                        tableBody.appendChild(row);
+                    }
+                }
+            } else {
+                const row = document.createElement('tr');
+                const keyCell = document.createElement('td');
+                const valueCell = document.createElement('td');
+                keyCell.textContent = '状态';
+                valueCell.textContent = '未找到该图片的详细数据';
+                row.appendChild(keyCell);
+                row.appendChild(valueCell);
+                tableBody.appendChild(row);
+            }
+            
+            // 配置 drift
+            try {
+                // 为图片添加 data-zoom 属性，使用相同的图片路径作为放大源
+                img.setAttribute('data-zoom', img.src);
+                
                 const options = {
-                    width: img.width,    // 告诉库源图片的渲染宽度
-                    height: img.height,  // 告诉库源图片的渲染高度
-                    zoomWidth: 400,      // 放大窗口宽度
-                    offset: { vertical: 0, horizontal: 10 },
-                    scale: 2.5,          // 放大倍率
-                    zoomPosition: 'right' // 放在右侧
-                    // zoomStyle: 'z-index: 2000; border: 1px solid #ccc;' 
+                    zoomFactor: 6, // 放大倍数
+                    paneContainer: imgDetails, // 使用详情容器作为放大镜容器
+                    inlinePane: false, // 使用外部放大镜面板
+                    hoverBoundingBox: true, // 显示鼠标悬停区域
+                    injectBaseStyles: true, // 注入基础样式
+                    // sourceAttribute: src
                 };
                 
-                // 实例化
-                try {
-                    imageZoomInstance = new ImageZoom(container, options);
-                } catch(e) {
-                    console.error("Zoom init failed:", e);
-                }
+                // 实例化 drift
+                imageZoomInstance = new Drift(img, options);
+            } catch(e) {
+                console.error("Zoom init failed:", e);
             }
         }
 
         function killZoom() {
             if (imageZoomInstance) {
-                imageZoomInstance.kill(); // 如果库版本支持 kill
+                imageZoomInstance.disable(); // drift 库使用 disable() 方法
                 imageZoomInstance = null;
             }
-            // 手动清理 DOM 以防万一 (移除除 img 以外的所有子元素)
+            // 手动清理 DOM 以防万一 (移除 drift 创建的元素)
             const container = document.getElementById('img-container');
-            const children = Array.from(container.children);
-            children.forEach(child => {
-                if (child.tagName !== 'IMG') {
-                    child.remove();
-                }
-            });
+            const modalBody = document.getElementById('modalBody');
+            const imgDetails = document.getElementById('img-details');
+            
+            // 移除 drift 创建的放大面板
+            const driftPane = modalBody.querySelector('.drift-pane');
+            if (driftPane) {
+                driftPane.remove();
+            }
+            
+            // 移除 drift 创建的边界框
+            const driftBoundingBox = modalBody.querySelector('.drift-bounding-box');
+            if (driftBoundingBox) {
+                driftBoundingBox.remove();
+            }
+            
+            // 当关闭放大开关后，确保容器的样式能够使图片在页面内 x 方向居中
+            container.style.width = '100%';
+            container.style.display = 'flex';
+            container.style.alignItems = 'flex-start';
+            container.style.justifyContent = 'center';
+            container.style.minHeight = '100%';
+            
+            // 隐藏详情面板
+            imgDetails.classList.add('hidden');
         }
 
         function toggleZoom(checkbox) {
             imageZoomEnabled = checkbox.checked;
             if (imageZoomEnabled) {
+                // 获取当前显示的图片对应的表格行
+                const modalImage = document.getElementById('modalImage');
+                const fileName = modalImage.src.split('/').pop();
+                if (window.reportData) {
+                    const imageData = window.reportData.results.find(item => 
+                        item.output_filename === fileName
+                    );
+                    if (imageData) {
+                        // 查找对应的表格行
+                        const tableBody = document.getElementById('tableBody');
+                        for (let i = 0; i < tableBody.rows.length; i++) {
+                            if (tableBody.rows[i].cells[1].textContent === fileName) {
+                                initZoom(tableBody.rows[i]);
+                                return;
+                            }
+                        }
+                    }
+                }
+                // 如果找不到表格行，仍然初始化，但不传递参数
                 initZoom();
             } else {
                 killZoom();
@@ -565,14 +761,36 @@
         function changeBackground(color) {
             const body = document.getElementById('modalBody');
             const container = document.getElementById('img-container');
+            const imgDetails = document.getElementById('img-details');
+            const jsonTable = document.getElementById('json-table');
+            const jsonTableHeader = jsonTable.querySelector('thead');
             const btns = document.querySelectorAll('.background-selector button');
             btns.forEach(b => b.classList.remove('active'));
             event.target.classList.add('active');
 
-            let bg = '#1a1a1a';
-            if (color === 'white') bg = '#ffffff';
-            if (color === 'black') bg = '#000000';
+            let bg = '#e0e0e0'; // 灰色更暗一点
+            let textColor = '#333333';
+            let tableHeaderBg = '#6c757d'; // 优化表头颜色
+            let tableRowHoverBg = '#f8f9fa';
             
+            if (color === 'white') {
+                bg = '#ffffff';
+                textColor = '#333333';
+                tableHeaderBg = '#6c757d'; // 优化表头颜色
+                tableRowHoverBg = '#f8f9fa';
+            } else if (color === 'black') {
+                bg = '#000000';
+                textColor = '#f0f0f0';
+                tableHeaderBg = '#333333';
+                tableRowHoverBg = '#444444';
+            } else if (color === 'gray') {
+                bg = '#e0e0e0'; // 灰色更暗一点
+                textColor = '#333333';
+                tableHeaderBg = '#6c757d'; // 优化表头颜色
+                tableRowHoverBg = '#f8f9fa';
+            }
+            
+            // 更新模态框背景
             body.style.background = bg;
             if (color === 'checkerboard') {
                 body.style.backgroundImage = `linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)`;
@@ -581,6 +799,84 @@
             } else {
                 body.style.backgroundImage = 'none';
             }
+            
+            // 更新详情面板和表格样式
+            if (imgDetails) {
+                if (color === 'white' || color === 'gray') {
+                    imgDetails.style.background = '#ffffff';
+                } else if (color === 'black') {
+                    imgDetails.style.background = '#2a2a2a';
+                }
+            }
+            
+            if (jsonTable) {
+                // 更新表格文本颜色
+                const tableCells = jsonTable.querySelectorAll('td');
+                tableCells.forEach(cell => {
+                    cell.style.color = textColor;
+                });
+                
+                // 更新表头样式
+                if (jsonTableHeader) {
+                    jsonTableHeader.style.background = tableHeaderBg;
+                    const headerCells = jsonTableHeader.querySelectorAll('th');
+                    headerCells.forEach(cell => {
+                        // 在白色和灰色背景下，表头文本设为白色，提高可读性
+                        if (color === 'white' || color === 'gray') {
+                            cell.style.color = 'white';
+                        } else if (color === 'black') {
+                            cell.style.color = 'white';
+                        }
+                    });
+                }
+                
+                // 更新表格行悬停样式
+                const tableRows = jsonTable.querySelectorAll('tbody tr');
+                tableRows.forEach(row => {
+                    row.style.transition = 'background-color 0.3s';
+                    row.onmouseover = function() {
+                        this.style.background = tableRowHoverBg;
+                    };
+                    row.onmouseout = function() {
+                        this.style.background = '';
+                    };
+                });
+            }
+            
+            // 确保背景选择器按钮状态正确
+            const bgButtons = document.querySelectorAll('.background-selector button');
+            bgButtons.forEach(button => {
+                button.classList.remove('active');
+                if (button.textContent === getBackgroundButtonText(color)) {
+                    button.classList.add('active');
+                }
+            });
+            
+            // 辅助函数：根据背景类型获取按钮文本
+            function getBackgroundButtonText(backgroundType) {
+                const bgMap = {
+                    'gray': '灰色',
+                    'white': '白色',
+                    'black': '黑色',
+                    'checkerboard': '棋盘格'
+                };
+                return bgMap[backgroundType] || '灰色';
+            }
+            
+            // 更新 .drift-zoom-pane-loader 和 .drift-zoom-pane 的背景色
+            const styleId = 'drift-loader-style';
+            let styleElement = document.getElementById(styleId);
+            
+            if (!styleElement) {
+                styleElement = document.createElement('style');
+                styleElement.id = styleId;
+                document.head.appendChild(styleElement);
+            }
+            
+            styleElement.textContent = `.drift-zoom-pane-loader { background-color: ${bg} !important; } .drift-zoom-pane { background-color: ${bg} !important; }`;
+            
+            // 保存当前背景选择
+            currentBackground = color;
         }
 
         // 初始化
